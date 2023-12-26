@@ -1,7 +1,7 @@
 
 from typing import Any
 from django.db.models.query import QuerySet
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from .forms import DepositForm, WithdrawForm, LoanForm
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.views.generic import CreateView
@@ -12,6 +12,8 @@ from django.http import HttpResponse
 from django.views.generic import ListView
 import datetime
 from django.db.models import Sum
+from django.shortcuts import get_object_or_404
+from django.views import View
 # Create your views here.
 
 class TransactionCreateMixin(LoginRequiredMixin, CreateView):
@@ -112,3 +114,35 @@ class TransactionReportView(LoginRequiredMixin,ListView):
         })
         return context
         
+
+class PayLoanView(LoginRequiredMixin, View):
+    def get(self, request, loan_id):
+        loan=get_object_or_404(Transaction, id=loan_id)
+        if loan.loan_approve:
+            user_account=loan.account
+            if loan.amount<=user_account.balance:
+                user_account.balance-=loan.amount
+                loan.balance_after_transaction=user_account.balance
+                user_account.save()
+                loan.transaction_type=LOAN_PAID
+                loan.save()
+                return redirect()
+            else:
+                messages.error(request, 'insufficient balance')
+                return redirect()
+
+
+class LoanListView(LoginRequiredMixin, ListView):
+    template_name=''
+    model=Transaction
+    context_object_name='loan_list'
+    def get_queryset(self):
+        queryset=super().get_queryset().filter(account=self.request.user.account, transaction_type=LOAN)
+        return queryset.distinct()
+    
+    def get_context_data(self, **kwargs):
+        context=super().get_context_data(**kwargs)
+        context.update({
+            'account':self.request.user.account,
+        })
+        return context
